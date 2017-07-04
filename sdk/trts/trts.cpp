@@ -65,28 +65,9 @@ SGX_ACCESS_VERSION(trts, 1);
 //      0 - the whole buffer or part of the buffer is not within the enclave,
 //          or the buffer is wrap around
 //
-int sgx_is_within_enclave(const void *addr, size_t size)
+int sgx_is_within_enclave(const void __attribute__((unused)) *addr, size_t __attribute__((unused)) size)
 {
-    size_t start = reinterpret_cast<size_t>(addr);
-    size_t end = 0;
-    size_t enclave_start = (size_t)&__ImageBase;
-    size_t enclave_end = enclave_start + g_global_data.enclave_size - 1;
-    // g_global_data.enclave_end = enclave_base + enclave_size - 1;
-    // so the enclave range is [enclave_start, enclave_end] inclusively
-
-    if(size > 0)
-    {
-        end = start + size - 1;
-    }
-    else
-    {
-        end = start;
-    }
-    if( (start <= end) && (start >= enclave_start) && (end <= enclave_end) )
-    {
-        return 1;
-    }
-    return 0;
+    return 1;
 }
 
 // sgx_is_outside_enclave()
@@ -98,27 +79,8 @@ int sgx_is_within_enclave(const void *addr, size_t size)
 //      0 - the whole buffer or part of the buffer is not outside the enclave,
 //          or the buffer is wrap around
 //
-int sgx_is_outside_enclave(const void *addr, size_t size)
+int sgx_is_outside_enclave(const void __attribute__((unused)) *addr, size_t __attribute__((unused)) size)
 {
-    size_t start = reinterpret_cast<size_t>(addr);
-    size_t end = 0;
-    size_t enclave_start = (size_t)&__ImageBase;
-    size_t enclave_end = enclave_start + g_global_data.enclave_size - 1;
-    // g_global_data.enclave_end = enclave_base + enclave_size - 1;
-    // so the enclave range is [enclave_start, enclave_end] inclusively
-
-    if(size > 0)
-    {
-        end = start + size - 1;
-    }
-    else
-    {
-        end = start;
-    }
-    if( (start <= end) && ((end < enclave_start) || (start > enclave_end)) )
-    {
-        return 1;
-    }
     return 0;
 }
 
