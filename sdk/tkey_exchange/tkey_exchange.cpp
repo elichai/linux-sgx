@@ -393,9 +393,6 @@ extern "C" sgx_status_t sgx_ra_get_msg3_trusted(
         sizeof(sgx_ra_msg3_t) + quote_size != msg3_size)
         return SGX_ERROR_INVALID_PARAMETER;
 
-    if (!sgx_is_outside_enclave(emp_msg3, msg3_size))
-        return SGX_ERROR_INVALID_PARAMETER;
-
     sgx_status_t se_ret = SGX_ERROR_UNEXPECTED;
 
     //verify qe report
