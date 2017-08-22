@@ -8,7 +8,7 @@ echo "Checking if running in correct OS..."
 ([[ `lsb_release -a 2> /dev/null` == *"14.04"* ]] || [[ `lsb_release -a 2> /dev/null` == *"16.04"* ]]) || (echo "Wrong OS. Run on Ubuntu 14.04 or Ubuntu 16.04."; exit 1)
 
 PACKAGES_TO_INSTALL=""
-for PACKAGE in build-essential ocaml automake autoconf libtool wget python libcurl4-openssl-dev protobuf-compiler protobuf-c-compiler libprotobuf-dev libprotobuf-c-dev
+for PACKAGE in build-essential ocaml automake autoconf libtool wget python libcurl4-openssl-dev protobuf-compiler protobuf-c-compiler libprotobuf-dev libprotobuf-c-dev libssl-dev
 do
   dpkg -s $PACKAGE > /dev/null || PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL $PACKAGE"
 done
