@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -53,7 +53,7 @@ class AECloseSessionResponse : public IAEResponse
         bool inflateWithMessage(AEMessage* message);
 
 
-        bool GetValues(uint32_t* errorCode);        //operators
+        bool GetValues(uint32_t* errorCode) const;        //operators
         AECloseSessionResponse& operator=(const AECloseSessionResponse& other);
 
         //checks

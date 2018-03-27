@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -111,7 +111,7 @@ bool AEGetPsCapResponse::inflateWithMessage(AEMessage* message)
     return true;
 }
 
-bool AEGetPsCapResponse::GetValues(uint32_t* errorCode, uint64_t* ps_cap)
+bool AEGetPsCapResponse::GetValues(uint32_t* errorCode, uint64_t* ps_cap) const
 {
     *ps_cap = m_response->ps_cap();
     *errorCode = m_response->errorcode();

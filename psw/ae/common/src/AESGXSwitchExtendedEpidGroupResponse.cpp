@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -108,7 +108,7 @@ bool AESGXSwitchExtendedEpidGroupResponse::inflateWithMessage(AEMessage* message
     return true;
 }
 
-bool AESGXSwitchExtendedEpidGroupResponse::GetValues(uint32_t* errorCode)
+bool AESGXSwitchExtendedEpidGroupResponse::GetValues(uint32_t* errorCode) const
 {
     *errorCode = m_response->errorcode();
     return true;

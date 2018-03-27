@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -99,18 +99,6 @@ typedef enum _CRYPTO_STATUS
 
 static EcDsaPubKey SerializedPublicKey = {0};
 #define INTEL_ECDSA_PUBKEY_PROD_BE  SerializedPublicKey
-
-STATUS ParseCertificateChain(UINT8 *pCertChain, 
-   UINT32 CertChainLength,
-   SessMgrCertificateFields *certificateFields,
-   UINT8                    *CertWorkBuffer,
-   UINT32                   CertWorkBufferLength,
-   ISSUER_INFO              *RootPublicKey,
-   UINT8                    NumberOfSingleResponses,
-   OCSP_CERT_STATUS_TABLE   *OcspCertStatusTable,
-   CertificateType          CertType,
-   BOOL                     UseFacsimileEpid
-   );
 
 STATUS SetPublicEcDsaKey( const EcDsaPubKey* pPublicKey)
 {

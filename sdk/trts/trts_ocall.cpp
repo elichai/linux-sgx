@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,7 +36,6 @@
 #include "sgx_edger8r.h"
 #include "rts.h"
 #include "util.h"
-#include "xsave.h"
 #include "trts_internal.h"
 
 extern "C" sgx_status_t asm_oret(uintptr_t sp, void *ms);
@@ -61,22 +60,18 @@ sgx_status_t sgx_ocall(const unsigned int index, void *ms)
         return SGX_ERROR_OCALL_NOT_ALLOWED;
     }
     // the OCALL index should be within the ocall table range
-    if(static_cast<size_t>(index) >= g_dyn_entry_table.nr_ocall)
+    // -2, -3 and -4 should be allowed to test SDK 2.0 features
+    if((index != 0) &&
+            (index != (unsigned int)EDMM_TRIM) &&
+            (index != (unsigned int)EDMM_TRIM_COMMIT) &&
+            (index != (unsigned int)EDMM_MODPR) &&
+            static_cast<size_t>(index) >= g_dyn_entry_table.nr_ocall)
     {
         return SGX_ERROR_INVALID_FUNCTION;
     }
-    // save and clean extended feature registers
-    uint8_t buffer[FXSAVE_SIZE] = {0};
-    save_and_clean_xfeature_regs(buffer);
 
     // do sgx_ocall
     sgx_status_t status = do_ocall(index, ms);
-
-    // restore extended feature registers
-    restore_xfeature_regs(buffer);
-
-    // clear buffer to avoid secret leaking
-    memset_s(buffer, FXSAVE_SIZE, 0, FXSAVE_SIZE);
 
     return status;
 }
@@ -112,7 +107,7 @@ sgx_status_t do_oret(void *ms)
     thread_data_t *thread_data = get_thread_data();
     uintptr_t last_sp = thread_data->last_sp;
     ocall_context_t *context = reinterpret_cast<ocall_context_t*>(thread_data->last_sp);
-    if(0 == last_sp)
+    if(0 == last_sp || last_sp <= (uintptr_t)&context)
     {
         return SGX_ERROR_UNEXPECTED;
     }
@@ -120,24 +115,22 @@ sgx_status_t do_oret(void *ms)
     // 30 is an estimated value: 8 for enclave_entry and 22 for do_ocall.
     if(last_sp > thread_data->stack_base_addr - 30 * sizeof(size_t))
     {
-        goto invalid_ocall_frame;
+        return SGX_ERROR_UNEXPECTED;
     }
     if(context->ocall_flag != OCALL_FLAG)
     {
-        goto invalid_ocall_frame;
+        return SGX_ERROR_UNEXPECTED;
     }
-    if(context->pre_last_sp > thread_data->stack_base_addr)
+    if(context->pre_last_sp > thread_data->stack_base_addr
+       || context->pre_last_sp <= (uintptr_t)context)
     {
-        goto invalid_ocall_frame;
+        return SGX_ERROR_UNEXPECTED;
     }
-    if(context->pre_last_sp <= (uintptr_t)&context)
-    {
-        goto invalid_ocall_frame;
-    }
+
     thread_data->last_sp = context->pre_last_sp;
     asm_oret(last_sp, ms);
-
-invalid_ocall_frame:
+    
+    // Should not come here
     return SGX_ERROR_UNEXPECTED;
 }
 

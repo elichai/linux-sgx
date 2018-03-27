@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+# Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -34,52 +34,67 @@
 #  - Trusted libraries
 #        - tstdc:         libsgx_tstdc.a
 #        - tstdcxx:       libsgx_tstdcxx.a
+#        - tcxx:          libsgx_tcxx.a
 #        - tservice:      libsgx_tservice.a
 #        - trts:          libsgx_trts.a
 #        - tcrypto:       libsgx_tcrypto.a
 #        - tkey_exchange: libsgx_tkey_exchange.a
-#        - tsetjmp:       libsgx_tsetjmp.a
+#        - tprotected_fs: libsgx_tprotected_fs.a
 #        - tcmalloc:      libsgx_tcmalloc.a
 #  - Untrtusted libraries
 #        - ukey_exchange: libsgx_ukey_exchange.a
+#        - uprotected_fs: libsgx_uprotected_fs.a
 #        - ptrace:        libsgx_ptrace.so, gdb-sgx-plugin
 #        - sample_crypto: libsample_crypto.so (for sample code use)
+#  - Standalone, untrusted libraries
+#        - libcapable:    libsgx_capable.a libsgx_capable.so
 #  - Tools
 #        - signtool:      sgx_sign
 #        - edger8r:       sgx_edger8r
 #  - Simulation libraries and tools
-#        - simulation:    libsgx_trts_sim.a, libsgx_tservice_sim.a, libsgx_urts_sim.a, libsgx_uae_service_sim.a, sgx_config_cpusvn
+#        - simulation:    libsgx_trts_sim.a, libsgx_tservice_sim.a, libsgx_urts_sim.so, libsgx_uae_service_sim.so, sgx_config_cpusvn
 #
 include ../buildenv.mk
 
 LIBTLIBC   := $(BUILD_DIR)/libsgx_tstdc.a
 LIBTLIBCXX := $(BUILD_DIR)/libsgx_tstdcxx.a
+LIBTCXX    := $(BUILD_DIR)/libsgx_tcxx.a
 LIBTSE     := $(BUILD_DIR)/libsgx_tservice.a
 
-.PHONY: all
-all: tstdc tstdcxx tservice trts tcrypto tkey_exchange ukey_exchange ptrace sample_crypto simulation signtool edger8r tsetjmp tcmalloc
+.PHONY: components
+components: tstdc tstdcxx tcxx tservice trts tcrypto tkey_exchange ukey_exchange tprotected_fs uprotected_fs ptrace sample_crypto libcapable simulation signtool edger8r tcmalloc
 
 # ---------------------------------------------------
 #  tstdc
-#      includes: tlibc, libm, tlibthread, compiler-rt
+#      includes: tlibc, libm, tlibthread, compiler-rt, tsafecrt
 # ---------------------------------------------------
 .PHONY: tstdc
 tstdc: $(LIBTLIBC)
 
-$(LIBTLIBC): tlibthread compiler-rt sgx_libm
+$(LIBTLIBC): tlibthread compiler-rt tsafecrt sgx_libm tsetjmp
 	$(MAKE) -C tlibc/ -j4 2> /dev/null
-	@$(MKDIR) $(BUILD_DIR)/.libm  $(BUILD_DIR)/.tlibc   $(BUILD_DIR)/.tlibthread
-	@$(RM) -f $(BUILD_DIR)/.libm/* $(BUILD_DIR)/.tlibc/* $(BUILD_DIR)/.tlibthread/*
-	@cd $(BUILD_DIR)/.libm     && $(AR) x $(LINUX_EXTERNAL_DIR)/sgx_libm/libm.a
-	@cd $(BUILD_DIR)/.tlibc      && $(AR) x $(LINUX_SDK_DIR)/tlibc/libtlibc.a
-	@cd $(BUILD_DIR)/.tlibthread && $(AR) x $(LINUX_SDK_DIR)/tlibthread/libtlibthread.a
+	@$(MKDIR) $(BUILD_DIR)/.libm  $(BUILD_DIR)/.tlibc   $(BUILD_DIR)/.tlibthread $(BUILD_DIR)/.tsafecrt $(BUILD_DIR)/.tsetjmp
+	@$(RM) -f $(BUILD_DIR)/.libm/*          && cd $(BUILD_DIR)/.libm       && $(AR) x $(LINUX_EXTERNAL_DIR)/sgx_libm/libm.a
+	@$(RM) -f $(BUILD_DIR)/.tlibc/*         && cd $(BUILD_DIR)/.tlibc      && $(AR) x $(LINUX_SDK_DIR)/tlibc/libtlibc.a
+	@$(RM) -f $(BUILD_DIR)/.tlibthread/*    && cd $(BUILD_DIR)/.tlibthread && $(AR) x $(LINUX_SDK_DIR)/tlibthread/libtlibthread.a
+	@$(RM) -f $(BUILD_DIR)/.tsafecrt/*      && cd $(BUILD_DIR)/.tsafecrt   && $(AR) x $(LINUX_SDK_DIR)/tsafecrt/libsgx_tsafecrt.a
+	@$(RM) -f $(BUILD_DIR)/.tsetjmp/*.o     && cd $(BUILD_DIR)/.tsetjmp    && $(AR) x $(LINUX_SDK_DIR)/tsetjmp/libsgx_tsetjmp.a
 	$(CP) compiler-rt/libcompiler-rt.a $@
-	$(AR) rsD $@ $(BUILD_DIR)/.libm/*.o $(BUILD_DIR)/.tlibc/*.o $(BUILD_DIR)/.tlibthread/*.o
-	@$(RM) -rf $(BUILD_DIR)/.libm $(BUILD_DIR)/.tlibc $(BUILD_DIR)/.tlibthread
+	$(AR) qD $@ $(BUILD_DIR)/.libm/*.o
+	$(AR) qD $@ $(BUILD_DIR)/.tlibc/*.o
+	$(AR) qD $@ $(BUILD_DIR)/.tlibthread/*.o
+	$(AR) qD $@ $(BUILD_DIR)/.tsafecrt/*.o
+	$(AR) qD $@ $(BUILD_DIR)/.tsetjmp/*.o
+	@$(RM) -rf $(BUILD_DIR)/.libm $(BUILD_DIR)/.tlibc
+	@$(RM) -rf $(BUILD_DIR)/.tlibthread $(BUILD_DIR)/.tsafecrt $(BUILD_DIR)/.tsetjmp
 
 .PHONY: tlibthread
 tlibthread:
 	$(MAKE) -C tlibthread/
+
+.PHONY: tsafecrt
+tsafecrt:
+	$(MAKE) -C tsafecrt/
 
 .PHONY: compiler-rt
 compiler-rt:
@@ -96,6 +111,10 @@ endif
 sgx_libm:
 	$(MAKE) -C $(LIBM_PATH) ARCH=$(M_ARCH) 2> /dev/null
 
+.PHONY: tsetjmp
+tsetjmp:
+	$(MAKE) -C tsetjmp/
+
 # ---------------------------------------------------
 #  tstdcxx
 #      includes: cpprt, tlibstdcxx
@@ -104,12 +123,12 @@ sgx_libm:
 tstdcxx: $(LIBTLIBCXX)
 
 $(LIBTLIBCXX): cpprt tlibstdcxx
-	@$(MKDIR) $(BUILD_DIR)/.cpprt   $(BUILD_DIR)/.tlibstdcxx
-	@$(RM) -f $(BUILD_DIR)/.cpprt/* $(BUILD_DIR)/.tlibstdcxx/*
-	@cd $(BUILD_DIR)/.cpprt      && $(AR) x $(LINUX_SDK_DIR)/cpprt/libcpprt.a
+	@$(MKDIR) $(BUILD_DIR)/.tlibstdcxx
+	@$(RM) -f $(BUILD_DIR)/.tlibstdcxx/*
 	@cd $(BUILD_DIR)/.tlibstdcxx && $(AR) x $(LINUX_SDK_DIR)/tlibstdcxx/libtlibstdcxx.a
-	$(AR) rcsD $@ $(BUILD_DIR)/.cpprt/*.o $(BUILD_DIR)/.tlibstdcxx/*.o
-	@$(RM) -rf   $(BUILD_DIR)/.cpprt     $(BUILD_DIR)/.tlibstdcxx
+	$(CP) $(LINUX_SDK_DIR)/cpprt/libcpprt.a $@
+	$(AR) qD $@ $(BUILD_DIR)/.tlibstdcxx/*.o
+	@$(RM) -rf $(BUILD_DIR)/.tlibstdcxx
 
 .PHONY: cpprt
 cpprt:
@@ -119,6 +138,26 @@ cpprt:
 tlibstdcxx: $(BUILD_DIR)
 	$(MAKE) -C tlibstdcxx/ 2> /dev/null
 	$(CP) tlibstdcxx/README.sgx $(BUILD_DIR)/STLport_Changes_SGX.txt
+
+# ---------------------------------------------------
+#  tcxx
+#      includes: cpprt, tlibcxx
+# ---------------------------------------------------
+.PHONY: tcxx
+tcxx: $(LIBTCXX)
+
+$(LIBTCXX): cpprt tlibcxx
+	@$(MKDIR) $(BUILD_DIR)/.tlibcxx
+	@$(RM) -f $(BUILD_DIR)/.tlibcxx/*
+	@cd $(BUILD_DIR)/.tlibcxx    && $(AR) x $(LINUX_SDK_DIR)/tlibcxx/libcxx.a
+	$(CP) $(LINUX_SDK_DIR)/cpprt/libcpprt.a $@
+	$(AR) qD $@ $(BUILD_DIR)/.tlibcxx/*.o
+	@$(RM) -rf   $(BUILD_DIR)/.tlibcxx
+
+.PHONY: tlibcxx
+tlibcxx: $(BUILD_DIR)
+	$(MAKE) -C tlibcxx/ 2> /dev/null
+	$(CP) tlibcxx/README.sgx $(BUILD_DIR)/libc++_Changes_SGX.txt
 
 # ---------------------------------------------------
 #  tse
@@ -163,20 +202,24 @@ tcrypto:
 tkey_exchange: edger8r
 	$(MAKE) -C tkey_exchange
 
-.PHONY: tsetjmp
-tsetjmp:
-	$(MAKE) -C tsetjmp/
-
 .PHONY: tcmalloc
 tcmalloc:
 	$(MAKE) -C gperftools/
 
+.PHONY: tprotected_fs
+tprotected_fs: edger8r
+	$(MAKE) -C protected_fs/sgx_tprotected_fs
+	
 # ---------------------------------------------------
 #  Untrusted libraries
 # ---------------------------------------------------
 .PHONY: ukey_exchange
 ukey_exchange:
 	$(MAKE) -C ukey_exchange
+
+.PHONY: uprotected_fs
+uprotected_fs: edger8r
+	$(MAKE) -C protected_fs/sgx_uprotected_fs
 
 .PHONY: ptrace
 ptrace:
@@ -185,6 +228,13 @@ ptrace:
 .PHONY: sample_crypto
 sample_crypto:
 	$(MAKE) -C sample_libcrypto
+
+# ---------------------------------------------------
+#  standalone, untrusted libraries
+# ---------------------------------------------------
+.PHONY: libcapable
+libcapable:
+	$(MAKE) -C libcapable/linux/
 
 # ---------------------------------------------------
 #  simualtion libraries and tools
@@ -215,20 +265,25 @@ clean:
 	$(MAKE) -C compiler-rt/                        clean
 	$(MAKE) -C cpprt                               clean
 	$(MAKE) -C tlibstdcxx/                         clean
+	$(MAKE) -C tlibcxx/                            clean
 	$(MAKE) -C tseal/linux/                        clean
 	$(MAKE) -C selib/linux/                        clean
 	$(MAKE) -C tae_service/                        clean
 	$(MAKE) -C trts/                               clean
 	$(MAKE) -C tsetjmp/                            clean
+	$(MAKE) -C tsafecrt/                           clean
 	$(MAKE) -C gperftools/                         clean
 	$(MAKE) -C tlibcrypto/                         clean
 	$(MAKE) -C tkey_exchange/                      clean
 	$(MAKE) -C ukey_exchange/                      clean
+	$(MAKE) -C protected_fs/sgx_tprotected_fs/     clean
+	$(MAKE) -C protected_fs/sgx_uprotected_fs/     clean
 	$(MAKE) -C debugger_interface/linux/           clean
 	$(MAKE) -C sample_libcrypto/                   clean
+	$(MAKE) -C libcapable/linux/                   clean
 	$(MAKE) -C simulation/                         clean
 	$(MAKE) -C sign_tool/SignTool                  clean
 	$(MAKE) -C edger8r/linux                       clean
 	@$(RM) $(LIBTLIBC) $(LIBTLIBCXX) $(LIBTSE)
 	@$(RM) $(BUILD_DIR)/STLport_Changes_SGX.txt
-
+	@$(RM) $(BUILD_DIR)/libc++_Changes_SGX.txt

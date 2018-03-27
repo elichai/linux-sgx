@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -80,6 +80,17 @@ DECLARE_LOCAL_FUNC get_thread_data
 
 /* 
  * ---------------------------------------------------------------------
+ * Function: sys_word_t get_stack_guard(void);
+ *
+ *     Get the value of stack_guard
+ * ---------------------------------------------------------------------
+ */
+DECLARE_LOCAL_FUNC get_stack_guard 
+    READ_TD_DATA stack_guard 
+    ret
+    
+/* 
+ * ---------------------------------------------------------------------
  * Function: enclave_entry
  *      The entry point of the enclave.
  *
@@ -134,15 +145,26 @@ DECLARE_GLOBAL_FUNC enclave_entry
     mov     %rbx, %rdx
 #endif
     call    enter_enclave
+    mov     %xax, %xbx
 
 .Lexit_enclave:
+/* clean extended feature registers */
+    lea_pic SYNTHETIC_STATE, %xdi
+#ifdef LINUX32
+    mov     %xdi, (%xsp)
+#endif
+    call    restore_xregs
+
+/* set xdi and xsi */
+    mov     $OCMD_ERET, %xdi
+    mov     %xbx, %xsi
+
+/* restore stack */
     mov     -1*SE_WORDSIZE(%xbp), %xdx  /* xdx: xsp_u  */
     mov     %xbp, %xsp
     pop     %xbp                        /* xbp_u */
     pop     %xbx                        /* ret_u */
     mov     %xdx, %xsp                  /* xsp_u */
-    mov     $OCMD_ERET, %xdi
-    mov     %xax, %xsi
 
 .Lclear_and_exit_enclave:
     /* Clear all GPRs, except xax, xbx, xdi and xsi */
@@ -196,9 +218,14 @@ DECLARE_GLOBAL_FUNC enclave_entry
  *    previous TD.last_sp -> |   frames        |
  *                            -----------------
  *                           |   ECALL frame   |
- *                           | do_ocall param 2| 21
- *                           | do_ocall param 1| 20
- *                           |do_ocall ret_addr| 19
+ *                           | do_ocall param 2| 3
+ *                           | do_ocall param 1| 2
+ *                           |do_ocall ret_addr| 1
+ *                           |     xbp         | 0 + xbp
+ *                           |     ....        |
+ *                           |   xsave buffer  |
+ *                           |     ....        |
+ *                           |  xsave pointer  | 19
  *                           |   ocall_depth   | 18
  *                           |   reserved      | 17
  *                           |   reserved      | 16
@@ -217,7 +244,7 @@ DECLARE_GLOBAL_FUNC enclave_entry
  *                           |    shadow       | 3
  *                           |    shadow       | 2
  *                           |    shadow       | 1
- *             TD.last_sp -> |    shadow       | 0
+ *             TD.last_sp -> |    shadow       | 0 + xsp
  *                            -----------------
  * -------------------------------------------------------------------------
  */
@@ -228,9 +255,26 @@ DECLARE_LOCAL_FUNC do_ocall
  * 1 for OCALL_FLAG, 4 for shadow space.
  * Stack Pointer is 16-byte aligned under x86_64.
  */
-    sub     $(19*SE_WORDSIZE), %xsp
+    push    %xbp
+    mov     %xsp, %xbp
 
-    /* save non-volatile registers, except xsp */
+/* save parameters in stack */
+#ifdef LINUX64
+    mov     %xdi, 2*SE_WORDSIZE(%xbp)
+    mov     %xsi, 3*SE_WORDSIZE(%xbp)
+#endif
+
+/* save and clean extended feature registers */
+    READ_TD_DATA xsave_size
+    sub     %xax, %xsp                 /* allocate buffer to save xregs */
+    mov     $0x3f, %xax
+    not     %xax
+    and     %xax, %xsp                 /* xsave requires 64 byte aligned */
+    mov     %xsp, %xcx                 # xsave pointer
+
+    sub     $(20*SE_WORDSIZE), %xsp    /* 20 slots for GPRs and other info */
+    mov     %xcx, SE_WORDSIZE*19(%xsp) /* addr for xsave */
+/* save non-volatile registers, except xsp */
     mov     %xbx, SE_WORDSIZE*14(%xsp)
     mov     %xsi, SE_WORDSIZE*13(%xsp)
     mov     %xdi, SE_WORDSIZE*12(%xsp)
@@ -243,17 +287,29 @@ DECLARE_LOCAL_FUNC do_ocall
     mov     %r15, SE_WORDSIZE* 7(%rsp)
 #endif
 
+/* save and clean extended feature registers */
+    mov     SE_WORDSIZE*19(%xsp), %xdi /* xsave pointer */
+    READ_TD_DATA xsave_size
+    mov     %xax, %xcx
+    shr     $2, %xcx                   /* xsave size in dword */
+    xor     %xax, %xax
+    cld
+    rep stos %eax, %es:(%xdi)
+
+    mov     SE_WORDSIZE*19(%xsp), %xdi # xsave pointer
+    mov     %xdi, (%xsp)
+    call    save_xregs
+    lea_pic SYNTHETIC_STATE, %xdi
+    mov     %xdi, (%xsp)
+    call    restore_xregs
+
     /* set xdi and xsi using the input parameters */
 #ifdef LINUX64
-    mov     %edi, %edi      /* it should clear the high 32bit word of RDI */
-    /*
-     * rdi - param 1 (index), rsi - param 2 (ms) 
-     * only use lower 32bit of rdi, rsi remains unchanged. 
-     */
-#endif
-#ifdef LINUX32
-    mov     SE_WORDSIZE*20(%esp), %edi
-    mov     SE_WORDSIZE*21(%esp), %esi
+    mov     SE_WORDSIZE*12(%xsp), %xdi
+    mov     SE_WORDSIZE*13(%xsp), %xsi
+#else
+    mov     SE_WORDSIZE*2(%ebp), %edi
+    mov     SE_WORDSIZE*3(%ebp), %esi
 #endif
 
     /* save ocall index to the stack */
@@ -346,12 +402,31 @@ DECLARE_LOCAL_FUNC __morestack
     .cfi_endproc
 
 DECLARE_GLOBAL_FUNC asm_oret
-#ifdef LINUX32
-    mov     SE_WORDSIZE(%xsp), %xdi
-    mov     2*SE_WORDSIZE(%xsp), %xsi
+    mov     %xsp, %xbx
+#ifdef LINUX64
+    mov     %xdi, SE_WORDSIZE(%xsp)
+    mov     %xsi, 2*SE_WORDSIZE(%xsp)
 #endif
-    mov     %xdi, %xsp         /* restore thread_data.last_sp */
-    mov     %xsi, %xax         /* ocall return value */
+    mov     SE_WORDSIZE(%xbx), %xsp    /* restore thread_data.last_sp */
+
+/* restore extended feature registers */
+    mov     19*SE_WORDSIZE(%xsp), %xdi
+#ifdef LINUX32
+    mov     %xdi, (%xsp)
+#endif
+    call    restore_xregs
+
+/* memset_s */
+    xor     %xax, %xax
+    mov     11*SE_WORDSIZE(%xsp), %xcx
+    sub     %xdi, %xcx
+    sub     $SE_WORDSIZE, %xcx
+    shr     $2, %xcx
+    cld
+    rep stos %eax,%es:(%xdi)
+
+    mov     2*SE_WORDSIZE(%xbx), %xax  /* ocall return value */
+
 #ifdef LINUX64
     mov     7*SE_WORDSIZE(%xsp), %r15
     mov     8*SE_WORDSIZE(%xsp), %r14
@@ -364,7 +439,8 @@ DECLARE_GLOBAL_FUNC asm_oret
     mov    13*SE_WORDSIZE(%xsp), %xsi
     mov    14*SE_WORDSIZE(%xsp), %xbx
 
-    add    $(19*SE_WORDSIZE),  %xsp
+    mov     %xbp, %xsp
+    pop     %xbp
 
     ret
     /* should not come here */
@@ -393,7 +469,6 @@ DECLARE_LOCAL_FUNC do_egetkey
     xor  %xax, %xax
 .Legetkey_done:
     SE_EPILOG
-    ret
 
 
 /* 
@@ -409,8 +484,21 @@ DECLARE_LOCAL_FUNC do_ereport
     mov       $SE_EREPORT, %xax  /* EREPORT leaf */
     ENCLU
     SE_EPILOG
-    ret
     
+DECLARE_GLOBAL_FUNC do_eaccept
+    SE_PROLOG
+    mov     $SE_EACCEPT, %eax
+    ENCLU
+    cmp  $SGX_SUCCESS, %eax 
+    jnz	 abort 
+    SE_EPILOG
+
+DECLARE_GLOBAL_FUNC do_emodpe
+    SE_PROLOG
+    mov     $SE_EMODPE, %eax 
+    ENCLU
+    SE_EPILOG
+
 #define _RDRAND_RETRY_TIMES 10	
 /* 
  * -------------------------------------
@@ -464,8 +552,10 @@ DECLARE_LOCAL_FUNC continue_execution
     push    %xax                       # push xax
     mov     SE_WORDSIZE*1(%xcx), %xax
     push    %xax                       # push xcx
-    mov     SE_WORDSIZE*4(%xcx), %xax
-    sub     $(SE_WORDSIZE), %xax       # xax: xsp
+    mov     SE_WORDSIZE*4(%xcx), %xax  # xax: xsp 
+# x86_64 requires a 128-bytes red zone. We need to allocate buffer to avoid touching the red zone.
+    sub     $(SE_WORDSIZE + RED_ZONE_SIZE), %xax  # allocate buffer to skip the red zone (if any) and save the xip
+                                                  # RED_ZONE_SIZE: 0(i386), 128-bytes(x86_64) 
 
 # restore registers except xax, xcx, xsp
     mov     SE_WORDSIZE*2(%xcx), %xdx
@@ -501,4 +591,4 @@ DECLARE_LOCAL_FUNC continue_execution
     pop     %xcx                       # restore xcx
     pop     %xsp                       # xsp: xax
     xchg    %xax, %xsp
-    ret
+    ret     $(RED_ZONE_SIZE)           # pop xip and red zone (if any)

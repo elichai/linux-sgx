@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+# Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -38,6 +38,9 @@ CXXFLAGS += -Werror -fno-rtti -fno-exceptions -fPIC
 CPPFLAGS := -isystem $(SGX_IPP_INC) \
             -I$(COMMON_DIR)/inc/internal/           
 
+LDFLAGS := -Bdynamic -L$(IPP_LIBS_DIR) $(LD_IPP) 
+LDFLAGS += $(COMMON_LDFLAGS) -Wl,--version-script,sample_libcrypto.lds -Wl,--gc-sections
+
 OBJS := sample_libcrypto.o
 
 LIBSAMPLECRYPTO := libsample_libcrypto.so
@@ -49,26 +52,14 @@ $(BUILD_DIR):
 all: $(LIBSAMPLECRYPTO) | $(BUILD_DIR)
 	@$(CP) $< $|
 
-ifneq ($(USE_OPT_LIBS), 0) 
 $(LIBSAMPLECRYPTO): $(OBJS)
-	$(CXX) $(CXXFLAGS) -shared -Bdynamic -Wl,-soname,$(LIBSAMPLECRYPTO) $< -o $@ -L$(IPP_LIBS_DIR) $(LD_IPP) -Wl,--version-script,sample_libcrypto.lds	
-
-else
-libcrypto_px:
-	$(MAKE) -C $(SGX_IPP_DIR)
-
-$(LIBSAMPLECRYPTO): $(OBJS) libcrypto_px
-	$(CXX) $(CXXFLAGS) -shared -Bdynamic -Wl,-soname,$(LIBSAMPLECRYPTO) $< -o $@ -L$(IPP_LIBS_DIR) $(LD_IPP) -Wl,--version-script,sample_libcrypto.lds
-endif
+	$(CXX) $(CXXFLAGS) -shared -Wl,-soname,$(LIBSAMPLECRYPTO) $< -o $@ $(LDFLAGS)	
 
 $(OBJS): %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
 
 .PHONY: clean
 clean:
-ifeq ($(USE_OPT_LIBS), 0)
-	$(MAKE) -C $(SGX_IPP_DIR)  clean
-endif
 	@$(RM) $(OBJS) $(LIBSAMPLECRYPTO) $(BUILD_DIR)/$(LIBSAMPLECRYPTO)
 
 .PHONY: rebuild

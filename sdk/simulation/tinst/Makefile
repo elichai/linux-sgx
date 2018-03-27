@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+# Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -40,6 +40,7 @@ CPPFLAGS += -I$(COMMON_DIR)/inc/           \
             -I$(SIM_DIR)/assembly/         \
             -I$(SIM_DIR)/assembly/linux    \
             -I$(SIM_DIR)/uinst/            \
+            -I$(LINUX_PSW_DIR)/urts/linux  \
             -I$(LINUX_SDK_DIR)/selib
 
 CXXFLAGS += $(ENCLAVE_CXXFLAGS) -Werror -fno-exceptions -fno-rtti

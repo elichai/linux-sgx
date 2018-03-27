@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -143,17 +143,11 @@ static bool base_64_encode(const uint8_t *in_buf, uint32_t in_size, uint8_t *out
     BIO* bioMem = NULL;
     bool ret = false;
     BIO *bio64 = NULL;
-    BIO_METHOD *bm = BIO_f_base64();
-    if(bm == NULL)
-        goto ret_point;
-    bio64 = BIO_new(bm);
+    bio64 = BIO_new(BIO_f_base64());
     if(bio64 == NULL) 
         goto ret_point;
     BIO_set_flags(bio64, BIO_FLAGS_BASE64_NO_NL);
-    bm = BIO_s_mem();
-    if(bm == NULL)
-        goto ret_point;
-    bioMem = BIO_new(bm);
+    bioMem = BIO_new(BIO_s_mem());
     if(bioMem == NULL)
         goto ret_point;
    (void)BIO_push(bio64, bioMem);
@@ -188,10 +182,7 @@ static bool base_64_decode(const uint8_t *in_buf, uint32_t in_size, uint8_t *out
   bool ret = false;
   int read=0;
   memset(out_buf, 0, *out_size);
-  BIO_METHOD *bm = BIO_f_base64();
-  if(bm == NULL)
-      goto ret_point;
-  b64 = BIO_new(bm);
+  b64 = BIO_new(BIO_f_base64());
   if(b64 == NULL)
       goto ret_point;
   BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
@@ -315,7 +306,8 @@ uint32_t certPseSvn()
 			// go from binary (tempCert) to mem bio (certBio) to internal OpenSSL representation of x509 cert (cert)
 			//
 			const upse::Buffer& tempCert = *iterator;
-			int retVal = certBio->method->bwrite(certBio, (const char*) tempCert.getData(), tempCert.getSize());
+
+			int retVal = BIO_write(certBio, (const char*) tempCert.getData(), tempCert.getSize());
 			if (retVal <= 0) break;
 
 			cert = d2i_X509_bio(certBio, NULL);

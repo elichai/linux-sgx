@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +30,7 @@
  */
 
 
-
+ 
 /**
 * File: sgx_tcrypto.h
 * Description:
@@ -52,17 +52,14 @@
 #define SGX_CMAC_KEY_SIZE               16
 #define SGX_CMAC_MAC_SIZE               16
 #define SGX_AESCTR_KEY_SIZE             16
+#define SGX_RSA3072_KEY_SIZE            384
+#define SGX_RSA3072_PRI_EXP_SIZE        384
+#define SGX_RSA3072_PUB_EXP_SIZE        4
 
 typedef struct _sgx_ec256_dh_shared_t
 {
     uint8_t s[SGX_ECP256_KEY_SIZE];
 } sgx_ec256_dh_shared_t;
-
-typedef struct _sgx_ec256_dh_shared512_t
-{
-    uint8_t x[SGX_ECP256_KEY_SIZE];
-    uint8_t y[SGX_ECP256_KEY_SIZE];
-} sgx_ec256_dh_shared512_t;
 
 typedef struct _sgx_ec256_private_t
 {
@@ -80,6 +77,21 @@ typedef struct _sgx_ec256_signature_t
     uint32_t x[SGX_NISTP_ECP256_KEY_SIZE];
     uint32_t y[SGX_NISTP_ECP256_KEY_SIZE];
 } sgx_ec256_signature_t;
+
+typedef struct _sgx_rsa3072_public_key_t
+{
+    uint8_t mod[SGX_RSA3072_KEY_SIZE];
+    uint8_t exp[SGX_RSA3072_PUB_EXP_SIZE];
+} sgx_rsa3072_public_key_t;
+
+typedef struct _sgx_rsa3072_key_t
+{
+    uint8_t mod[SGX_RSA3072_KEY_SIZE];
+    uint8_t d[SGX_RSA3072_PRI_EXP_SIZE];
+    uint8_t e[SGX_RSA3072_PUB_EXP_SIZE];
+} sgx_rsa3072_key_t;
+
+typedef uint8_t sgx_rsa3072_signature_t[SGX_RSA3072_KEY_SIZE];
 
 typedef void* sgx_sha_state_handle_t;
 typedef void* sgx_cmac_state_handle_t;
@@ -119,6 +131,12 @@ typedef enum {
     SGX_EC_INVALID_SIGNATURE    /* invalid signature */
 } sgx_generic_ecresult_t;
 
+
+typedef enum {
+	SGX_RSA_VALID,               /* validation pass successfully     */
+
+	SGX_RSA_INVALID_SIGNATURE    /* invalid signature */
+} sgx_rsa_result_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -287,8 +305,8 @@ extern "C" {
     * Parameters:
     *   Return: sgx_status_t  - SGX_SUCCESS or failure as defined in sgx_error.h
     *   Inputs: sgx_cmac_128bit_key_t *p_key - Pointer to the key used in encryption/decryption operation
-    *           uint8_t *p_src - Pointer to the input stream to be MAC’d
-    *           uint32_t src_len - Length of the input stream to be MAC’d
+    *           uint8_t *p_src - Pointer to the input stream to be MAC'd
+    *           uint32_t src_len - Length of the input stream to be MAC'd
     *   Output: sgx_cmac_gcm_128bit_tag_t *p_mac - Pointer to the resultant MAC
     */
     sgx_status_t SGXAPI sgx_rijndael128_cmac_msg(const sgx_cmac_128bit_key_t *p_key,
@@ -331,16 +349,17 @@ extern "C" {
     */
     sgx_status_t SGXAPI sgx_cmac128_close(sgx_cmac_state_handle_t cmac_handle);
 
-
    /** AES-CTR 128-bit - Only 128-bit key size is supported.
     *
     * These functions encrypt/decrypt the input data stream of a variable length according
     * to the CTR mode as specified in [NIST SP 800-38A].  The counter can be thought of as
-    * an IV which increments on successive encryption or decrytion calls. For a given
+    * an IV which increments on successive encryption or decryption calls. For a given
     * dataset or data stream the incremented counter block should be used on successive
     * calls of the encryption/decryption process for that given stream.  However for
     * new or different datasets/streams, the same counter should not be reused, instead
     * intialize the counter for the new data set.
+    * Note: SGXSSL based version doesn't support user given ctr_inc_bits. It use OpenSSL's implementation
+    * which divide the counter block into two parts ([IV][counter])
     *
     * sgx_aes_ctr_encrypt
     *      Return: If source, key, counter, or destination pointer is NULL,
@@ -370,7 +389,7 @@ extern "C" {
     *   Output:
     *     uint8_t *p_dst - Pointer to the cipher text.
     *                      Size of buffer should be >= src_len.
-   */
+    */
     sgx_status_t SGXAPI sgx_aes_ctr_encrypt(
                         const sgx_aes_ctr_128bit_key_t *p_key,
                         const uint8_t *p_src,
@@ -378,6 +397,7 @@ extern "C" {
                         uint8_t *p_ctr,
                         const uint32_t ctr_inc_bits,
                         uint8_t *p_dst);
+
     sgx_status_t SGXAPI sgx_aes_ctr_decrypt(
                         const sgx_aes_ctr_128bit_key_t *p_key,
                         const uint8_t *p_src,
@@ -385,6 +405,7 @@ extern "C" {
                         uint8_t *p_ctr,
                         const uint32_t ctr_inc_bits,
                         uint8_t *p_dst);
+
 
 
    /**
@@ -437,7 +458,7 @@ extern "C" {
     * The private key p_private is a number that lies in the range of [1, n-1] where n is
     * the order of the elliptic curve base point.
     *
-    * The public key p_public is an elliptic curve point such that p_public = p_private ?G,
+    * The public key p_public is an elliptic curve point such that p_public = p_private *G,
     * where G is the base point of the elliptic curve.
     *
     * The context of the point p_public as an elliptic curve point must be created by using
@@ -456,6 +477,7 @@ extern "C" {
                                                 sgx_ec256_public_t *p_public,
                                                 sgx_ecc_state_handle_t ecc_handle);
 
+
     /** Checks whether the input point is a valid point on the given elliptic curve.
      * Parameters:
      *  Return: sgx_status_t - SGX_SUCCESS or failure as defined sgx_error.h
@@ -466,6 +488,7 @@ extern "C" {
     sgx_status_t SGXAPI sgx_ecc256_check_point(const sgx_ec256_public_t *p_point,
                                     const sgx_ecc_state_handle_t ecc_handle,
                                     int *p_valid);
+
 
    /** Computes DH shared key based on own (local) private key and remote public Ga Key.
     * NOTE: Caller code allocates memory for Shared key pointer to be populated
@@ -483,19 +506,19 @@ extern "C" {
     *
     * According to the scheme, Alice and Bob perform the following operations:
     * 1. Alice calculates her own public key pubKeyA by using her private key
-    *    privKeyA: pubKeyA = privKeyA ?G, where G is the base point of the elliptic curve.
+    *    privKeyA: pubKeyA = privKeyA *G, where G is the base point of the elliptic curve.
     * 2. Alice passes the public key to Bob.
     * 3. Bob calculates his own public key pubKeyB by using his private key
-    *    privKeyB: pubKeyB = privKeyB ?G, where G is a base point of the elliptic curve.
+    *    privKeyB: pubKeyB = privKeyB *G, where G is a base point of the elliptic curve.
     * 4. Bob passes the public key to Alice.
     * 5. Alice gets Bob's public key and calculates the secret point shareA. When calculating,
     *    she uses her own private key and Bob's public key and applies the following formula:
-    *    shareA = privKeyA ?pubKeyB = privKeyA ?privKeyB ?G.
+    *    shareA = privKeyA *pubKeyB = privKeyA *privKeyB *G.
     * 6. Bob gets Alice's public key and calculates the secret point shareB. When calculating,
     *    he uses his own private key and Alice's public key and applies the following formula:
-    *    shareB = privKeyB ?pubKeyA = privKeyB ?privKeyA ?G.
+    *    shareB = privKeyB *pubKeyA = privKeyB *privKeyA *G.
     *
-    * Because the following equation is true privKeyA ?privKeyB ?G = privKeyB ?privKeyA ?G,
+    * Because the following equation is true privKeyA *privKeyB *G = privKeyB *privKeyA *G,
     * the result of both calculations is the same, that is, the equation shareA = shareB is true.
     * The secret point serves as a secret key.
     *
@@ -520,20 +543,8 @@ extern "C" {
                                                     sgx_ec256_dh_shared_t *p_shared_key,
                                                     sgx_ecc_state_handle_t ecc_handle);
 
-   /* Computes 512-bit DH shared key based on private B key (local) and remote public Ga Key
-    * Parameters:
-    *   Return: sgx_status_t - SGX_SUCCESS or failure as defined in sgx_error.h
-    *   Inputs: sgx_ecc_state_handle_t ecc_handle - Handle to the ECC crypto system
-    *           sgx_ec256_private_t *p_private_b - Pointer to the local private key
-    *           sgx_ec256_public_t *p_public_ga - Pointer to the remote public key
-    *   Output: sgx_ec256_dh_shared512_t *p_shared_key - Pointer to the 512-bit shared DH key
-    */
-    sgx_status_t SGXAPI sgx_ecc256_compute_shared_dhkey512(sgx_ec256_private_t *p_private_b,
-                                                    sgx_ec256_public_t *p_public_ga,
-                                                    sgx_ec256_dh_shared512_t *p_shared_key,
-                                                    sgx_ecc_state_handle_t ecc_handle);
-
-   /** Computes signature for data based on private key.
+   
+    /** Computes signature for data based on private key.
     *
     * A message digest is a fixed size number derived from the original message with
     * an applied hash function over the binary code of the message. (SHA256 in this case)
@@ -599,6 +610,51 @@ extern "C" {
                                         sgx_ec256_signature_t *p_signature,
                                         uint8_t *p_result,
                                         sgx_ecc_state_handle_t ecc_handle);
+
+    /** Computes signature for a given data based on RSA 3072 private key
+    *
+    * A digital signature over a message consists of a 3072 bit number.
+    *
+    * Return: If private key, signature or data pointer is NULL,
+    *                    SGX_ERROR_INVALID_PARAMETER is returned.
+    *         If the signing process fails then SGX_ERROR_UNEXPECTED is returned.
+    * Parameters:
+    *   Return: sgx_status_t  - SGX_SUCCESS or failure as defined in sgx_error.h
+    *   Inputs: uint8_t *p_data - Pointer to the data to be signed
+    *           uint32_t data_size - Size of the data to be signed
+    *           sgx_rsa3072_key_t *p_key - Pointer to the RSA key. 
+    *				Note: In IPP based version p_key->e is unused, hence it can be NULL.
+    *   Output: sgx_rsa3072_signature_t *p_signature - Pointer to the signature output
+    */
+    sgx_status_t sgx_rsa3072_sign(const uint8_t *p_data,
+        uint32_t data_size,
+        const sgx_rsa3072_key_t *p_key,
+        sgx_rsa3072_signature_t *p_signature);
+
+    /** Verifies the signature for the given data based on the RSA 3072 public key.
+    *
+    * A digital signature over a message consists of a 3072 bit number.
+    *
+    * The typical result of the digital signature verification is one of the two values:
+    *     SGX_Generic_ECValid - Digital signature is valid
+    *     SGX_Generic_ECInvalidSignature -  Digital signature is not valid
+    *
+    * Return: If public key, signature, result or data pointer is NULL,
+    *                    SGX_ERROR_INVALID_PARAMETER is returned.
+    *         If the verification process fails then SGX_ERROR_UNEXPECTED is returned.
+    * Parameters:
+    *   Return: sgx_status_t  - SGX_SUCCESS or failure as defined in sgx_error.h
+    *   Inputs: uint8_t *p_data - Pointer to the data to be verified
+    *           uint32_t data_size - Size of the data to be verified
+    *           sgx_rsa3072_public_key_t *p_public - Pointer to the public key
+    *           sgx_rsa3072_signature_t *p_signature - Pointer to the signature
+    *   Output: sgx_rsa_result_t *p_result - Pointer to the result of verification check
+    */
+    sgx_status_t sgx_rsa3072_verify(const uint8_t *p_data,
+        uint32_t data_size,
+        const sgx_rsa3072_public_key_t *p_public,
+        const sgx_rsa3072_signature_t *p_signature,
+		sgx_rsa_result_t *p_result);
 
 #ifdef __cplusplus
 }

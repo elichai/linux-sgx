@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+# Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -37,11 +37,18 @@ CFLAGS :=
 CPPFLAGS += -I$(COMMON_DIR)/inc/           \
             -I$(COMMON_DIR)/inc/internal/
 
-CFLAGS += -W -Wall -Werror -D_GNU_SOURCE -fpic -fstack-protector
+CFLAGS += -W -Wall -Werror -D_GNU_SOURCE -fpic
+ifeq ($(CC_BELOW_4_9), 1)
+	CFLAGS += -fstack-protector
+else
+	CFLAGS += -fstack-protector-strong
+endif
 LDLIBS += -ldl
 
 ifdef DEBUG
-    CFLAGS += -g -DSE_DEBUG=1
+    CFLAGS += -g -DSE_DEBUG=1 -ffunction-sections -fdata-sections
+else
+    CFLAGS += -O2 -D_FORTIFY_SOURCE=2 -ffunction-sections -fdata-sections
 endif
 
 OBJ1 := se_memory.o se_trace.o
@@ -69,7 +76,7 @@ install: $(TARGET) | $(GDB_OUT_DIR) $(GDB_PLUGINS_FILES)
 	$(CP) $(TARGET) $(BUILD_DIR)
 
 $(TARGET): $(OBJS)
-	$(CC) -shared -o $@ $^ $(LDLIBS) $(CFLAGS)
+	$(CC) -shared -o $@ $^ $(LDLIBS) $(CFLAGS) $(COMMON_LDFLAGS) -Wl,--gc-sections
 
 $(OBJ1): %.o: $(COMMON_DIR)/src/%.c
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $< -o $@

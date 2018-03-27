@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -172,7 +172,7 @@ IAEResponse* AEGetQuoteRequest::execute(IAESMLogic* aesmLogic) {
                 spid_length, spid,
                 nonce_length, nonce,
                 sig_rl_length, sig_rl,
-                (uint32_t)m_request->buf_size(), &quote,
+                quote_length, &quote,
                 m_request->qe_report(), &qe_report_length, &qe_report);
 
     }

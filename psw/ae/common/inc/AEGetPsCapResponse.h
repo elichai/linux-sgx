@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -60,7 +60,7 @@ class AEGetPsCapResponse : public IAEResponse
 
         AEMessage*  serialize();
 
-        bool GetValues(uint32_t* errorCode, uint64_t* ps_cap);
+        bool GetValues(uint32_t* errorCode, uint64_t* ps_cap) const;
         //operators
         AEGetPsCapResponse& operator=(const AEGetPsCapResponse &other);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,8 +32,12 @@
 #include "pse_pr_inc.h"
 #include "epid_verify_pub.hh"
 
-
-const uint8_t* Keys::EpidVerifyKey()
+const uint8_t** Keys::EpidVerifyKeys()
 {
-    return pEpidVerifyKey;
+    return pEpidVerifyKeys;
+}
+
+uint32_t Keys::EpidVerifyKeyNum()
+{
+    return static_cast<uint32_t>(sizeof(pEpidVerifyKeys) / sizeof(pEpidVerifyKeys[0]));
 }

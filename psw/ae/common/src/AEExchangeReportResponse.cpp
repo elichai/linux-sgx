@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -111,7 +111,7 @@ bool AEExchangeReportResponse::inflateWithMessage(AEMessage* message)
     return true;
 }
 
-bool AEExchangeReportResponse::GetValues(uint32_t* errorCode, uint32_t dhMsg3Length, uint8_t* dhMsg3)
+bool AEExchangeReportResponse::GetValues(uint32_t* errorCode, uint32_t dhMsg3Length, uint8_t* dhMsg3) const
 {
     if (m_response->has_se_dh_msg3() && dhMsg3 != NULL)
     {

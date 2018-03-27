@@ -48,7 +48,7 @@ else
 endif
 
 #set c++11 for all c++ compilers
-CXXFLAGS += -std=c++0x
+CXXFLAGS += -std=c++11
 
 #set flags for unit tests executables
 GTEST_FLAGS = --gtest_color=yes \
@@ -77,7 +77,6 @@ clean:
 	$(MAKE) -C ./example/util/ clean
 	$(MAKE) -C ./example/ clean
 	$(MAKE) -C ./tools/ clean
-	$(MAKE) -C ./ext/gtest/ clean
 	$(MAKE) -C ./epid/common-testhelper/ clean
 	$(MAKE) -C ./ext/dropt/ clean
 

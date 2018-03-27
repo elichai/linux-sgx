@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -100,7 +100,7 @@ bool AEGetLaunchTokenResponse::inflateWithMessage(AEMessage* message)
     return true;
 }
 
-bool AEGetLaunchTokenResponse::GetValues(uint32_t* result, uint8_t* token, uint32_t tokenLength)
+bool AEGetLaunchTokenResponse::GetValues(uint32_t* result, uint8_t* token, uint32_t tokenLength) const
 {
     if (m_response->has_token() && token != NULL)
     {

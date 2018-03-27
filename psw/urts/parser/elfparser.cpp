@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,8 +33,9 @@
 #include "se_trace.h"
 #include "se_memcpy.h"
 #include "global_data.h"
-
-#define META_SECTION_ALIGNMENT    1  /*metadata section no alignment*/
+#include <sys/mman.h>
+#include <vector>
+#include <tuple>
 
 namespace {
 /** the callback function to filter a section.
@@ -388,22 +389,17 @@ bool get_meta_property(const uint8_t *start_addr, const ElfW(Ehdr) *elf_hdr, uin
      * |  metadata       |
      */
 
-    if (shdr->sh_addralign != META_SECTION_ALIGNMENT)
-    {
-        se_trace(SE_TRACE_ERROR, "ERROR: The '.note.sgxmeta' section must be 4byte aligned\n");
-        return false;
-    }
-
     const ElfW(Note) *note = GET_PTR(ElfW(Note), start_addr, shdr->sh_offset);
     assert(note != NULL);
 
-    if (shdr->sh_size != ROUND_TO(sizeof(ElfW(Note)) + note->namesz + note->descsz, META_SECTION_ALIGNMENT))
+    if (shdr->sh_size != ROUND_TO(sizeof(ElfW(Note)) + note->namesz + note->descsz, shdr->sh_addralign ))
     {
         se_trace(SE_TRACE_ERROR, "ERROR: The '.note.sgxmeta' section size is not correct.\n");
         return false;
     }
-
-    if (memcmp(GET_PTR(void, start_addr, shdr->sh_offset + sizeof(ElfW(Note))), "sgx_metadata", note->namesz))
+    
+    const char * meta_name = "sgx_metadata";
+    if (note->namesz != (strlen(meta_name)+1) || memcmp(GET_PTR(void, start_addr, shdr->sh_offset + sizeof(ElfW(Note))), meta_name, note->namesz))
     {
         se_trace(SE_TRACE_ERROR, "ERROR: The note in the '.note.sgxmeta' section must be named as \"sgx_metadata\"\n");
         return false;
@@ -441,7 +437,7 @@ bool validate_segment(const ElfW(Ehdr) *elf_hdr, uint64_t len)
 
             // Verify the overlap of segment. we don't verify here, because a well compiled file has no overlapped segment.
             load_seg[k].first = prg_hdr->p_vaddr;
-            load_seg[k].second = prg_hdr->p_vaddr + ROUND_TO(prg_hdr->p_memsz, prg_hdr->p_align) - 1;
+            load_seg[k].second = ROUND_TO(prg_hdr->p_vaddr + prg_hdr->p_memsz, prg_hdr->p_align) - 1;
 
             for (int j = 0; j < k; j++)
             {
@@ -695,6 +691,15 @@ uint64_t ElfParser::get_symbol_rva(const char* name) const
         return 0;
 }
 
+bool ElfParser::has_text_reloc() const
+{
+    if (m_dyn_info[DT_TEXTREL].d_tag)
+    {
+        return true;
+    }
+    return false;
+}
+
 bool ElfParser::get_reloc_bitmap(vector<uint8_t>& bitmap)
 {
     // Clear the `bitmap' so that it is in a known state
@@ -821,9 +826,15 @@ void ElfParser::get_reloc_entry_offset(const char* sec_name, vector<uint64_t>& o
     }
 }
 
+#include "se_page_attr.h"
 #include "update_global_data.hxx"
 
-bool ElfParser::update_global_data(const create_param_t* const create_param,
+uint32_t ElfParser::get_global_data_size()
+{
+    return (uint32_t)sizeof(global_data_t);
+}
+bool ElfParser::update_global_data(const metadata_t *const metadata,
+                                   const create_param_t* const create_param,
                                    uint8_t *data,
                                    uint32_t *data_size)
 {
@@ -832,9 +843,8 @@ bool ElfParser::update_global_data(const create_param_t* const create_param,
         *data_size = sizeof(global_data_t);
         return false;
     }
-    do_update_global_data(create_param, (global_data_t *)data);
     *data_size = sizeof(global_data_t);
-    return true;
+    return do_update_global_data(metadata, create_param, (global_data_t *)data);
 }
 
 sgx_status_t ElfParser::modify_info(enclave_diff_info_t *enclave_diff_info)
@@ -863,4 +873,120 @@ void ElfParser::get_executable_sections(vector<const char *>& xsec_names) const
             xsec_names.push_back(shstrtab + shdr->sh_name);
     }
     return;
+}
+
+bool ElfParser::set_memory_protection(uint64_t enclave_base_addr, bool is_after_initialization)
+{
+    uint64_t len = 0;
+    int ret = 0;
+    uint64_t rva = 0;
+    uint64_t rva_end = 0;
+    uint64_t last_section_end = 0;
+    int prot = 0;
+    unsigned int i = 0;
+
+    //for sections
+    std::vector<Section*> sections = get_sections();
+
+    for(i = 0; i < sections.size() ; i++)
+    {
+        //require the sec_info.rva be page aligned, we need handle the first page.
+        //the first page;
+        uint64_t offset = (sections[i]->get_rva() & (SE_PAGE_SIZE -1));
+        uint64_t size = SE_PAGE_SIZE - offset;
+
+        //the raw data may be smaller than the size, we get the min of them
+        if(sections[i]->raw_data_size() < size)
+            size = sections[i]->raw_data_size();
+
+        len = SE_PAGE_SIZE;
+
+        //if there is more pages, then calc the next paged aligned pages
+        if((sections[i]->virtual_size() + offset) >  SE_PAGE_SIZE)
+        {
+            uint64_t raw_data_size = sections[i]->raw_data_size() - size;
+            //we need use (SE_PAGE_SIZE - offset), because (SE_PAGE_SIZE - offset) may larger than size
+            uint64_t virtual_size = sections[i]->virtual_size() - (SE_PAGE_SIZE - offset);
+            len += ROUND_TO_PAGE(raw_data_size);
+
+            if(ROUND_TO_PAGE(virtual_size) > ROUND_TO_PAGE(raw_data_size))
+            {
+                len += ROUND_TO_PAGE(virtual_size) - ROUND_TO_PAGE(raw_data_size);
+            }
+        }
+        rva = TRIM_TO_PAGE(sections[i]->get_rva()) + enclave_base_addr;
+        prot = (int)(sections[i]->get_si_flags()&SI_MASK_MEM_ATTRIBUTE);
+        ret = mprotect((void*)rva, (size_t)len, prot);
+        if(ret != 0)
+        {
+            return false;
+        }
+        //there is a gap between sections, need to set those to NONE access
+        if(last_section_end != 0)
+        {
+            prot = (int)(SI_FLAG_NONE & SI_MASK_MEM_ATTRIBUTE);
+            ret = mprotect((void*)last_section_end, (size_t)(rva - last_section_end), prot);
+            if(ret != 0)
+            {
+                return false;
+            }
+        }
+        last_section_end = rva + len;
+    }
+    
+  
+    if(is_after_initialization == false)
+    {
+        return true;
+    }
+    
+    const ElfW(Ehdr) *elf_hdr = (const ElfW(Ehdr) *)m_start_addr;
+    const ElfW(Phdr) *prg_hdr = GET_PTR(ElfW(Phdr), elf_hdr, elf_hdr->e_phoff);
+
+    for (int idx = 0; idx < elf_hdr->e_phnum; idx++, prg_hdr++)
+    {
+       if(prg_hdr->p_type == PT_DYNAMIC ||
+          prg_hdr->p_type == PT_GNU_RELRO)
+       {
+           rva = TRIM_TO_PAGE(enclave_base_addr + prg_hdr->p_vaddr);
+           rva_end = ROUND_TO(enclave_base_addr + prg_hdr->p_vaddr + prg_hdr->p_memsz, prg_hdr->p_align);
+           len = rva_end - rva;
+           prot = (int)(page_attr_to_si_flags(prg_hdr->p_flags) & SI_MASK_MEM_ATTRIBUTE);
+           ret = mprotect((void*)rva, (size_t)len, prot);
+           if(ret != 0)
+           {
+                return false;
+           }
+       }
+    }
+    return true;
+}
+
+void ElfParser::get_pages_to_protect(uint64_t enclave_base_addr, std::vector<std::tuple<uint64_t, uint64_t, uint32_t>>& pages_to_protect) const
+{
+    uint64_t len = 0;
+    uint64_t rva = 0;
+    uint64_t rva_end = 0;
+
+    const ElfW(Ehdr) *elf_hdr = (const ElfW(Ehdr) *)m_start_addr;
+    const ElfW(Phdr) *prg_hdr = GET_PTR(ElfW(Phdr), elf_hdr, elf_hdr->e_phoff);
+
+    for (int idx = 0; idx < elf_hdr->e_phnum; idx++, prg_hdr++)
+    {
+        if( (prg_hdr->p_type == PT_GNU_RELRO) ||
+                ((prg_hdr->p_type == PT_LOAD) && has_text_reloc() && ((prg_hdr->p_flags & PF_W) == 0)) )
+        {
+            uint32_t perm = 0;
+            rva = TRIM_TO_PAGE(enclave_base_addr + prg_hdr->p_vaddr);
+            rva_end = ROUND_TO_PAGE(enclave_base_addr + prg_hdr->p_vaddr + prg_hdr->p_memsz);
+            len = rva_end - rva;
+
+            if (prg_hdr->p_flags & PF_R)
+                perm |= SI_FLAG_R;
+            if (prg_hdr->p_flags & PF_X)
+                perm |= SI_FLAG_X;
+
+            pages_to_protect.push_back(std::make_tuple(rva, len, perm));
+        }
+    }
 }

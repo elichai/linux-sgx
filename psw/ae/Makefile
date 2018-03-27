@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+# Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -39,24 +39,35 @@ else
     CURL_RESULT :=
 endif
 
+ifneq ($(USE_OPT_LIBS), 1)
 .PHONY: all
-all: $(CURL_RESULT) PSEPR_EPID AESM COPY_AES CSE| $(BUILD_DIR)
+all:
+	$(info ***NOTE***: SDK is not built based on prebuilt optimized libs. SKIP the build for aesm_service.)
+
+else
+
+.PHONY: all
+ifeq ($(BUILD_REF_LE), 1)
+all: $(CURL_RESULT) AESM REF_LE COPY_AES CSE| $(BUILD_DIR)
+else
+all: $(CURL_RESULT) AESM COPY_AES CSE| $(BUILD_DIR)
+endif #($(BUILD_REF_LE), 1)
+endif #!($(USE_OPT_LIBS), 1)
 
 # COPY_AES: currently copy le, qe, pve, pce, pse_op, pse_pr
 .PHONY: COPY_AES
 COPY_AES: | $(BUILD_DIR)
 	$(CP) data/prebuilt/* $(BUILD_DIR)
 
-.PHONY: PSEPR_EPID
-PSEPR_EPID:
-	cd $(LINUX_EXTERNAL_DIR)/epid-sdk-3.0.0 && ./configure prefix=/usr/local
-	$(MAKE) -C $(LINUX_EXTERNAL_DIR)/epid-sdk-3.0.0 ARCH=$(ARCH)
-
 .PHONY: AESM
 AESM: | $(BUILD_DIR)
 	$(MAKE) -C aesm_service
 	$(CP) aesm_service/config/aesmd_service/aesmd.conf $(BUILD_DIR)
 	$(CP) aesm_service/config/aesmd_service/aesmd.service $(BUILD_DIR)
+
+.PHONY: REF_LE
+REF_LE:
+	$(MAKE) -C ref_le
 
 .PHONY: CSE
 CSE: | $(BUILD_DIR)
@@ -67,10 +78,10 @@ $(BUILD_DIR):
 	@$(MKDIR) $@
 
 .PHONY: clean
-clean::
+clean:
 	$(MAKE) -C aesm_service/                   clean
 	$(MAKE) -C cse_provision_tool              clean
-	-$(MAKE) -C $(LINUX_EXTERNAL_DIR)/epid-sdk-3.0.0 clean
+	$(MAKE) -C ref_le                          clean
 
 .PHONY: rebuild
 rebuild:

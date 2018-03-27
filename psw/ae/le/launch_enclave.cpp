@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -587,7 +587,7 @@ uint32_t le_init_white_list_wrapper(
     entry_number = p_wl_cert_chain->wl_cert.entry_number;
     entry_number = _ntohl(entry_number);
     // limits max MRSIGNER entry number in
-    // WL Cert to be <= 512
+    // WL Cert to be <= 2048
     if(entry_number > LE_MAX_MRSIGNER_NUMBER)
     {
         return LE_INVALID_PARAMETER;

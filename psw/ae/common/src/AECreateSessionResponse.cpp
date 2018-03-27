@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -111,7 +111,7 @@ bool AECreateSessionResponse::inflateWithMessage(AEMessage* message)
     return true;
 }
 
-bool AECreateSessionResponse::GetValues(uint32_t* errorCode, uint32_t* sessionId, uint32_t dhMsg1Length, uint8_t* dhMsg1)
+bool AECreateSessionResponse::GetValues(uint32_t* errorCode, uint32_t* sessionId, uint32_t dhMsg1Length, uint8_t* dhMsg1) const
 {
     if (m_response->has_se_dh_msg1() && dhMsg1 != NULL)
     {

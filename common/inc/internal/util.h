@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,8 +52,8 @@
 #define SE_BULK_PAGE_FRAME_MASK (SE_BULK_PAGE_FRAME_SIZE-1)
 #define SE_BULK_PAGE_SHIFT	(SE_PAGE_SHIFT + SE_BULK_PAGE_FRAME_SHIFT)
 #define SE_BULK_PAGE_SIZE	(1 << SE_BULK_PAGE_SHIFT)
-#define SE_GUARD_PAGE_SHIFT SE_PAGE_SHIFT
-#define SE_GUARD_PAGE_SIZE SE_PAGE_SIZE
+#define SE_GUARD_PAGE_SHIFT 16
+#define SE_GUARD_PAGE_SIZE (1 << SE_GUARD_PAGE_SHIFT)
 
 #define	ROUND_TO(x, align)  (((x) + ((align)-1)) & ~((align)-1))
 #define	ROUND_TO_PAGE(x)    ROUND_TO(x, SE_PAGE_SIZE)

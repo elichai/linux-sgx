@@ -1,5 +1,5 @@
 (*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -64,13 +64,11 @@ type attr_value =
 
 type ptr_size = {
   ps_size     : attr_value option;
-  ps_sizefunc : string     option;
   ps_count    : attr_value option;
 }
 
 let empty_ptr_size = {
   ps_size     = None;
-  ps_sizefunc = None;
   ps_count    = None;
 }
 

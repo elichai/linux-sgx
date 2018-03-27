@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -110,7 +110,7 @@ bool AEReportAttestationResponse::inflateWithMessage(AEMessage* message)
     return true;
 }
 
-bool AEReportAttestationResponse::GetValues(uint32_t* errorCode, uint32_t updateInfoLength, uint8_t* updateInfo)
+bool AEReportAttestationResponse::GetValues(uint32_t* errorCode, uint32_t updateInfoLength, uint8_t* updateInfo) const
 {
     if (m_response->has_platform_update_info() && updateInfo != NULL)
     {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -114,7 +114,7 @@ bool AEGetQuoteResponse::inflateWithMessage(AEMessage* message)
 }
 
 bool AEGetQuoteResponse::GetValues(uint32_t* errorCode, uint32_t quoteLength, uint8_t* quote,
-                                                      uint32_t qeReportLength, uint8_t* qeReport)
+                                                      uint32_t qeReportLength, uint8_t* qeReport) const
 {
     if (m_response->has_quote() && quote != NULL)
     {

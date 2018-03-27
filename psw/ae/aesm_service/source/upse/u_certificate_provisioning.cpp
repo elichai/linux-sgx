@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -81,7 +81,7 @@ uint8_t GID_TO_USE[4] = { 0x00, 0x00, 0x00, 0x06 };
 /* hardcoded "Public" PSE Certificate */
 
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -580,7 +580,7 @@ static ae_error_t do_get_quote
         if (0 != nSigRL)
             pSigRL = const_cast<uint8_t*>(sigRLBuffer.getData());
 
-        if (SGX_SUCCESS != sgx_get_quote_size(pSigRL, &nQuote))
+        if (SGX_SUCCESS != sgx_calc_quote_size(pSigRL, nSigRL, &nQuote))
             break;
 
         tmp_status = quoteBuffer.Alloc(nQuote);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -110,7 +110,7 @@ bool AEGetWhiteListSizeResponse::inflateWithMessage(AEMessage* message)
     return true;
 }
 
-bool AEGetWhiteListSizeResponse::GetValues(uint32_t* errorCode, uint32_t* white_list_size)
+bool AEGetWhiteListSizeResponse::GetValues(uint32_t* errorCode, uint32_t* white_list_size) const
 {
     *white_list_size = m_response->white_list_size();
     *errorCode = m_response->errorcode();

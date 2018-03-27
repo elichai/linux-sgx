@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,6 +33,7 @@
 #include "sgx_tkey_exchange.h"
 #include "sgx_trts.h"
 #include "sgx_utils.h"
+#include "sgx_lfence.h"
 #include "ecp_interface.h"
 #include "util.h"
 #include "string.h"

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -72,6 +72,7 @@ public:
     UINT32 csme_gid;
     unsigned psda_svn;
 private:
+    bool install_psda();
     bool start_service_internal();
     bool save_current_psda_svn();
 };

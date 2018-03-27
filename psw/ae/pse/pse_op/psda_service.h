@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,6 +46,7 @@
 #define CSE_RPDATA_SERVICE             3
 //trusted time
 #define CSE_TIMER_READ            0
+
 //RPDATA
 #define CSE_RPDATA_READ           0
 #define CSE_RPDATA_UPDATE         1
@@ -75,7 +76,6 @@ pse_op_error_t psda_read_timer(
     uint64_t* timestamp, 
     uint8_t* time_source_nonce);
 
-
 pse_op_error_t psda_read_rpdata(
     uint8_t* rpdata, 
     uint32_t* rp_epoch);
@@ -91,4 +91,3 @@ pse_op_error_t psda_reset_rpdata(
     uint32_t* rp_epoch);
 
 #endif // PSDA_SERVICE_H_
-

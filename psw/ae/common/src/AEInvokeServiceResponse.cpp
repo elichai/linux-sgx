@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -110,7 +110,7 @@ bool AEInvokeServiceResponse::inflateWithMessage(AEMessage* message)
     return true;
 }
 
-bool AEInvokeServiceResponse::GetValues(uint32_t* errorCode, uint32_t pseMessageLength,uint8_t* pseMessage)
+bool AEInvokeServiceResponse::GetValues(uint32_t* errorCode, uint32_t pseMessageLength,uint8_t* pseMessage) const
 {
     if (m_response->has_pse_message() && pseMessage != NULL)
     {

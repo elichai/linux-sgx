@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Intel Corporation. All rights reserved.
+ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,8 @@
  *
  */
 
-
+  
+#include "enclave.h"
 #include "enclave_creator_hw.h"
 #include "se_trace.h"
 #include "se_page_attr.h"
@@ -40,6 +41,7 @@
 #include "se_atomic.h"
 #include "se_detect.h"
 #include "cpuid.h"
+#include "rts.h"
 #include <assert.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -49,13 +51,20 @@
 #include <sys/mman.h>
 #include <stdlib.h>
 
+#define POINTER_TO_U64(A) ((__u64)((uintptr_t)(A)))
+  
+#define SGX_CPUID   0x12
 
-EnclaveCreator* g_enclave_creator = new EnclaveCreatorHW();
+static EnclaveCreatorHW g_enclave_creator_hw;
+
+EnclaveCreator* g_enclave_creator = &g_enclave_creator_hw;
 static uint64_t g_eid = 0x1;
+
 
 EnclaveCreatorHW::EnclaveCreatorHW():
     m_hdevice(-1),
-    m_sig_registered(false)
+    m_sig_registered(false),
+    m_in_kernel_driver(false)
 {
     se_mutex_init(&m_sig_mutex);
 }
@@ -71,79 +80,74 @@ int EnclaveCreatorHW::error_driver2urts(int driver_error)
 
     switch(driver_error)
     {
-#if 0
-    case SGX_ERROR:
-        if(ENOMEM == errno)
-            ret = SGX_ERROR_OUT_OF_MEMORY;
-        else
-            ret = SGX_ERROR_NO_DEVICE;
-        break;
-#endif
-    case SGX_INVALID_ATTRIBUTE:
-        ret = SGX_ERROR_INVALID_ATTRIBUTE;
-        break;
-    case SGX_INVALID_MEASUREMENT:
-        ret = SE_ERROR_INVALID_MEASUREMENT;
-        break;
-    case SGX_INVALID_SIG_STRUCT:
-    case SGX_INVALID_SIGNATURE:
-        ret = SGX_ERROR_INVALID_SIGNATURE;
-        break;
-    case SGX_INVALID_CPUSVN:
-        ret = SGX_ERROR_INVALID_CPUSVN;
-        break;
-    case SGX_INVALID_ISVSVN:
-        ret = SGX_ERROR_INVALID_ISVSVN;
-        break;
-    case SGX_UNMASKED_EVENT:
-        ret = SGX_ERROR_DEVICE_BUSY;
-        break;
-    case (int)SGX_POWER_LOST_ENCLAVE: // [-Wc++11-narrowing]
-        ret = SGX_ERROR_ENCLAVE_LOST;
-        break;
-    default:
-        SE_TRACE(SE_TRACE_WARNING, "unexpected error %#x from driver, should be uRTS/driver bug\n", driver_error);
-        ret = SGX_ERROR_UNEXPECTED;
-        break;
-    }
-
-    return ret;
-}
-
+     case SGX_INVALID_ATTRIBUTE:
+         ret = SGX_ERROR_INVALID_ATTRIBUTE;
+         break;
+     case SGX_INVALID_MEASUREMENT:
+         ret = SE_ERROR_INVALID_MEASUREMENT;
+         break;
+     case SGX_INVALID_SIG_STRUCT:
+     case SGX_INVALID_SIGNATURE:
+         ret = SGX_ERROR_INVALID_SIGNATURE;
+         break;
+     case SGX_INVALID_LICENSE:
+         ret = SE_ERROR_INVALID_LAUNCH_TOKEN;
+         break;
+     case SGX_INVALID_CPUSVN:
+         ret = SGX_ERROR_INVALID_CPUSVN;
+         break;
+     case SGX_INVALID_ISVSVN:
+         ret = SGX_ERROR_INVALID_ISVSVN;
+         break;
+     case SGX_UNMASKED_EVENT:
+         ret = SGX_ERROR_DEVICE_BUSY;
+         break;
+     case (int)SGX_POWER_LOST_ENCLAVE: // [-Wc++11-narrowing]
+         ret = SGX_ERROR_ENCLAVE_LOST;
+         break;
+     case (int)SGX_LE_ROLLBACK:
+         ret = SE_ERROR_INVALID_ISVSVNLE;
+         break;
+     default:
+         SE_TRACE(SE_TRACE_WARNING, "unexpected error %#x from driver, should be uRTS/driver bug\n", driver_error);
+         ret = SGX_ERROR_UNEXPECTED;
+         break;
+     }
+ 
+     return ret;
+ }
+ 
 int EnclaveCreatorHW::create_enclave(secs_t *secs, sgx_enclave_id_t *enclave_id, void **start_addr, bool ae)
 {
     assert(secs != NULL && enclave_id != NULL && start_addr != NULL);
     UNUSED(ae);
-    int ret = 0;
 
     if (false == open_se_device())
         return SGX_ERROR_NO_DEVICE;
 
     SE_TRACE(SE_TRACE_DEBUG, "\n secs.attibutes.flags = %llx, secs.attributes.xfrm = %llx \n"
-             , secs->attributes.flags, secs->attributes.xfrm);
+            , secs->attributes.flags, secs->attributes.xfrm);
+
     //SECS:BASEADDR must be naturally aligned on an SECS.SIZE boundary
-    void* enclave_base = mmap(NULL, (size_t)secs->size *2, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_SHARED, m_hdevice, 0);
-    if(enclave_base == NULL)
+    //This alignment is guaranteed by driver
+    void* enclave_base = mmap(NULL, (size_t)secs->size, PROT_NONE, MAP_SHARED, m_hdevice, 0);
+    if(enclave_base == MAP_FAILED)
     {
-        SE_TRACE(SE_TRACE_WARNING, "\nISGX_IOCTL_ENCLAVE_CREATE fails: mmap fail\n");
+        SE_TRACE(SE_TRACE_WARNING, "\ncreate enclave: mmap failed, errno = %d\n", errno);
         return SGX_ERROR_OUT_OF_MEMORY;
     }
-    //find a suitable base for enclave
-    uintptr_t base = (uintptr_t)enclave_base + ((size_t)secs->size - ((uintptr_t)enclave_base % (size_t)secs->size)) ;
-    secs->base = (void*)base;
-    //remove unneed page
-    munmap(enclave_base, (size_t)(secs->base) - (size_t)(enclave_base));
 
-    if(((uintptr_t)(enclave_base) + secs->size *2) != ((uintptr_t)secs->base + secs->size))
-    {
-        munmap((void*)((size_t)secs->base + secs->size), (size_t)(enclave_base) + (size_t)secs->size - (size_t)(secs->base));
-    }
-    
+    secs->base = enclave_base;
+  
     struct sgx_enclave_create param = {0};
-    param.src = (uintptr_t)(secs);
-    ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_CREATE, &param);
-    if(ret) {
-        SE_TRACE(SE_TRACE_WARNING, "\nISGX_IOCTL_ENCLAVE_CREATE fails: errno = %x\n", errno);
+    param.src = POINTER_TO_U64(secs);
+    int ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_CREATE, &param);
+    if(ret) 
+    {
+        if(ret == -1 && errno == EINTR) {
+            return SGX_INTERNAL_ERROR_ENCLAVE_CREATE_INTERRUPTED;  // Allow the user to retry.
+        }
+        SE_TRACE(SE_TRACE_WARNING, "\nSGX_IOC_ENCLAVE_CREATE failed: errno = %d\n", errno);
         return error_driver2urts(ret);
     }
     *enclave_id = se_atomic_inc64(&g_eid);
@@ -151,8 +155,7 @@ int EnclaveCreatorHW::create_enclave(secs_t *secs, sgx_enclave_id_t *enclave_id,
 
     return SGX_SUCCESS;
 }
-
-
+ 
 int EnclaveCreatorHW::add_enclave_page(sgx_enclave_id_t enclave_id, void *src, uint64_t rva, const sec_info_t &sinfo, uint32_t attr)
 {
     assert((rva & ((1<<SE_PAGE_SHIFT)-1)) == 0);
@@ -167,34 +170,46 @@ int EnclaveCreatorHW::add_enclave_page(sgx_enclave_id_t enclave_id, void *src, u
     int ret = 0;
     struct sgx_enclave_add_page addp = { 0, 0, 0, 0 };
 
-    addp.addr = (__u64)enclave_id + (__u64)rva;
-    addp.src = reinterpret_cast<uintptr_t>(source);
-    addp.secinfo = reinterpret_cast<uintptr_t>(const_cast<sec_info_t *>(&sinfo));
+    addp.addr = enclave_id + rva;
+    addp.src = POINTER_TO_U64(source);
+    addp.secinfo = POINTER_TO_U64(const_cast<sec_info_t*>(&sinfo));
     if(((1<<DoEEXTEND) & attr))
-        addp.mrmask |= 0xFFFF;
-    
+    addp.mrmask |= 0xFFFF;
     ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_ADD_PAGE, &addp);
     if(ret) {
         SE_TRACE(SE_TRACE_WARNING, "\nAdd Page - %p to %p... FAIL\n", source, rva);
         return error_driver2urts(ret);
     }
-   
+
     return SGX_SUCCESS;
 }
-
+ 
 int EnclaveCreatorHW::try_init_enclave(sgx_enclave_id_t enclave_id, enclave_css_t *enclave_css, token_t *launch)
 {
     int ret = 0;
-    struct sgx_enclave_init initp = { 0, 0, 0 };
-    initp.addr = (__u64)enclave_id;
-    initp.sigstruct = reinterpret_cast<uintptr_t>(enclave_css);
-    //launch should NOT be NULL, because it has been checked in urts_com.h::_create_enclave(...)
-    assert(launch != NULL);
 
-    initp.einittoken = reinterpret_cast<uintptr_t>(launch);
-    ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_INIT, &initp);
+    if (m_in_kernel_driver == false)
+    {
+        struct sgx_enclave_init initp = { 0, 0, 0 };
+        initp.addr = enclave_id;
+        initp.sigstruct = POINTER_TO_U64(enclave_css);
+        //license should NOT be NULL, because it has been checked in urts_com.h::_create_enclave(...)
+        assert(launch != NULL);
+
+        initp.einittoken = POINTER_TO_U64(launch);
+        ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_INIT, &initp);
+    }
+    else
+    {
+        struct sgx_enclave_init_in_kernel initp = { 0, 0 };
+        initp.addr = enclave_id;
+        initp.sigstruct = POINTER_TO_U64(enclave_css);
+
+        ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_INIT_IN_KERNEL, &initp);
+    }
+
     if (ret) {
-        SE_TRACE(SE_TRACE_WARNING, "\nISGX_IOCTL_ENCLAVE_INIT fails error = %x\n", ret);
+        SE_TRACE(SE_TRACE_WARNING, "\nSGX_IOC_ENCLAVE_INIT failed error = %d\n", ret);
         return error_driver2urts(ret);
     }
 
@@ -209,11 +224,10 @@ int EnclaveCreatorHW::try_init_enclave(sgx_enclave_id_t enclave_id, enclave_css_
 
     return SGX_SUCCESS;
 }
-
-//for linux hw mode, enclave_id is actually start address here
+ 
 int EnclaveCreatorHW::destroy_enclave(sgx_enclave_id_t enclave_id, uint64_t enclave_size)
 {
-    int ret = 0;
+    int ret = SGX_SUCCESS;
 
     ret = munmap((void*)enclave_id, (size_t)enclave_size);
 
@@ -221,21 +235,16 @@ int EnclaveCreatorHW::destroy_enclave(sgx_enclave_id_t enclave_id, uint64_t encl
         SE_TRACE(SE_TRACE_WARNING, "destroy SGX enclave failed, error = %d\n", errno);
         ret = SGX_ERROR_UNEXPECTED;
     }
-    else
-    {
-        ret = SGX_SUCCESS;
-    }
 
     return ret;
 }
-
+ 
 bool EnclaveCreatorHW::get_plat_cap(sgx_misc_attribute_t *misc_attr)
 {
+    // need to update code to support HyperV ECO
     return get_plat_cap_by_cpuid(misc_attr);
 }
-
-
-
+ 
 bool EnclaveCreatorHW::open_se_device()
 {
     LockGuard lock(&m_dev_mutex);
@@ -248,14 +257,20 @@ bool EnclaveCreatorHW::open_se_device()
 
     fd = open("/dev/isgx", O_RDWR);
     if (-1 == fd) {
-        SE_TRACE(SE_TRACE_WARNING, "open isgx device failed\n");
-        return false;
+        fd = open("/dev/sgx", O_RDWR);
+        if (-1 == fd) {
+            SE_TRACE(SE_TRACE_WARNING, "Failed to open Intel SGX device\n");
+            return false;
+        }
+
+        m_in_kernel_driver = true;
     }
+
     m_hdevice = fd;
 
     return true;
 }
-
+ 
 void EnclaveCreatorHW::close_se_device()
 {
     LockGuard lock(&m_dev_mutex);
@@ -264,5 +279,173 @@ void EnclaveCreatorHW::close_se_device()
     {
         close(m_hdevice);
         m_hdevice = -1;
+    }
+}
+
+int EnclaveCreatorHW::emodpr(uint64_t addr, uint64_t size, uint64_t flag)
+{
+    sgx_modification_param params;
+    memset(&params, 0 ,sizeof(sgx_modification_param));
+    params.range.start_addr = (unsigned long)addr;
+    params.range.nr_pages = (unsigned int)(size/SE_PAGE_SIZE);
+    params.flags = (unsigned long)flag;
+
+    int ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_EMODPR, &params);
+    if (ret)
+    {
+        SE_TRACE(SE_TRACE_ERROR, "SGX_IOC_ENCLAVE_EMODPR failed %d\n", errno);
+        return error_driver2urts(ret);
+    }
+
+    return SGX_SUCCESS;
+}
+ 
+int EnclaveCreatorHW::mktcs(uint64_t tcs_addr)
+{
+    sgx_range params;
+    memset(&params, 0 ,sizeof(sgx_range));
+    params.start_addr = (unsigned long)tcs_addr;
+    params.nr_pages = 1;
+
+    int ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_MKTCS, &params);
+    if (ret)
+    {
+        SE_TRACE(SE_TRACE_ERROR, "MODIFY_TYPE failed %d\n", errno);
+        return error_driver2urts(ret);
+    }
+
+    return SGX_SUCCESS;
+}
+ 
+int EnclaveCreatorHW::trim_range(uint64_t fromaddr, uint64_t toaddr)
+{
+    sgx_range params;
+    memset(&params, 0 ,sizeof(sgx_range));
+    params.start_addr = (unsigned long)fromaddr;
+    params.nr_pages = (unsigned int)((toaddr - fromaddr)/SE_PAGE_SIZE);
+
+    int ret= ioctl(m_hdevice, SGX_IOC_ENCLAVE_TRIM, &params);
+    if (ret)
+    {
+        SE_TRACE(SE_TRACE_ERROR, "SGX_IOC_ENCLAVE_TRIM failed %d\n", errno);
+        return error_driver2urts(ret);
+    }
+
+    return SGX_SUCCESS;
+
+}
+ 
+int EnclaveCreatorHW::trim_accept(uint64_t addr)
+{
+    sgx_range params;
+    memset(&params, 0 ,sizeof(sgx_range));
+    params.start_addr = (unsigned long)addr;
+    params.nr_pages = 1;
+
+    int ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_NOTIFY_ACCEPT, &params);
+
+
+    if (ret)
+    {
+        SE_TRACE(SE_TRACE_ERROR, "TRIM_RANGE_COMMIT failed %d\n", errno);
+        return error_driver2urts(ret);
+    }
+
+    return SGX_SUCCESS;
+}
+ 
+int EnclaveCreatorHW::remove_range(uint64_t fromaddr, uint64_t numpages)
+{
+    int ret = -1;
+    uint64_t i;
+    unsigned long start;
+
+    for (i = 0; i < numpages; i++)
+    {
+        start = (unsigned long)fromaddr + (unsigned long)(i << SE_PAGE_SHIFT);
+        ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_PAGE_REMOVE, &start);
+        if (ret)
+        {
+            SE_TRACE(SE_TRACE_ERROR, "PAGE_REMOVE failed %d\n", errno);
+            return error_driver2urts(ret);
+        }
+    }
+
+    return SGX_SUCCESS;
+}
+ 
+//EDMM is supported if and only if all of the following requirements are met:
+//1. We operate in HW mode
+//2. CPU has EDMM support
+//3. Driver has EDMM support
+//4. Both the uRTS version and enclave (metadata) version are higher than 1.5
+bool EnclaveCreatorHW::is_EDMM_supported(sgx_enclave_id_t enclave_id)
+{
+    bool supported = false, driver_supported = false, cpu_edmm = false;
+
+    CEnclave *enclave = CEnclavePool::instance()->get_enclave(enclave_id);
+    if (enclave == NULL)
+        return false;
+
+    cpu_edmm = is_cpu_edmm();
+    driver_supported = is_driver_compatible();
+
+    //return value of get_enclave_version() considers the version of uRTS and enclave metadata
+    supported = use_se_hw() && cpu_edmm && driver_supported && (enclave->get_enclave_version() >= SDK_VERSION_2_0);
+
+    return supported;
+}
+
+bool EnclaveCreatorHW::is_cpu_edmm() const
+{
+    bool cpu_edmm = false;
+    int a[4] = {0,0,0,0};
+
+    //Check CPU EDMM capability by CPUID
+    __cpuid(a, 0);
+    if (a[0] < SGX_CPUID)
+        return false;
+
+    __cpuidex(a, SGX_CPUID, 0);
+    if (!(a[0] & 1))
+        return false;
+
+    cpu_edmm = (a[0] & 2) != 0;
+    return cpu_edmm;
+}
+
+bool EnclaveCreatorHW::is_driver_compatible()
+{
+    static bool ret = driver_support_edmm();
+    return ret;
+}
+
+bool EnclaveCreatorHW::is_in_kernel_driver()
+{
+    open_se_device();
+    return m_in_kernel_driver;
+}
+
+bool EnclaveCreatorHW::driver_support_edmm()
+{
+    int ret;
+    sgx_modification_param p;
+    p.flags = 0;
+    p.range.start_addr = 0;
+    p.range.nr_pages = 0;
+
+    if (false == open_se_device())
+    {
+        return false;
+    }
+
+    ret = ioctl(m_hdevice, SGX_IOC_ENCLAVE_EMODPR, &p);
+    if ((ret == -1) && (errno == ENOTTY))
+    {
+        return false;
+    }
+    else
+    {
+        return true;
     }
 }
