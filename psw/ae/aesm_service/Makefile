@@ -128,6 +128,7 @@ WHITE_LIST_FILE := $(LINUX_PSW_DIR)/ae/data/prebuilt/white_list_cert_to_be_verif
 
 TCRYPTO_LIBDIR  := $(LINUX_SDK_DIR)/tlibcrypto
 VTUNE_LIBDIR := $(LINUX_EXTERNAL_DIR)/vtune/linux/sdk/src/ittnotify
+USER_LIBDIR := /usr/local/lib
 RDRAND_LIBDIR :=$(LINUX_EXTERNAL_DIR)/rdrand/src
 RDRAND_MAKEFILE := $(RDRAND_LIBDIR)/Makefile
 
@@ -137,7 +138,7 @@ endif
 
 
 EXTERNAL_LIB += -L$(TCRYPTO_LIBDIR) -lsgx_tcrypto
-EXTERNAL_LIB += -lprotobuf -lrt
+EXTERNAL_LIB += -L$(USER_LIBDIR) -lprotobuf -lrt
 EXTERNAL_LIB += -lcrypto 
 EXTERNAL_LIB += $(shell curl-config --libs)
 EXTERNAL_LIB += -L$(LINUX_SE_WRAPPER) -lwrapper -lrt
